@@ -38,7 +38,7 @@ const productSchema = z.object({
 
 type ProductForm = z.infer<typeof productSchema>;
 
-export default function Products(): JSX.Element {
+export default function Products() {
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);  // State mới cho categories
     const [selectedImages, setSelectedImages] = useState<string[]>([]);
