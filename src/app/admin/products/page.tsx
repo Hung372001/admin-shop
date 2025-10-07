@@ -2,15 +2,15 @@
 import { useEffect, useState } from 'react';
 import { collection, addDoc, updateDoc, deleteDoc, doc, getDocs, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Product } from '@/types';
+import { Product, Category } from '@/types';  // Import Category
 import { useUploadImage } from '@/hooks/useUploadImage';
-import { SubmitHandler } from 'react-hook-form';  // Thêm explicit import cho SubmitHandler
+import { SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import toast from 'react-hot-toast';
 
-// Shadcn imports - Đảm bảo đã add components
+// Shadcn imports
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -19,20 +19,28 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';  // Thêm Select imports
 
-// Zod schema
+// Zod schema (categoryId vẫn là string)
 const productSchema = z.object({
     name: z.string().min(1, 'Tên sản phẩm bắt buộc'),
     description: z.string().min(1, 'Mô tả bắt buộc'),
     price: z.number().positive('Giá phải > 0'),
-    categoryId: z.string().min(1, 'Category ID bắt buộc'),
+    categoryId: z.string().min(1, 'Vui lòng chọn danh mục'),  // Validation cho select
     stock: z.number().int().nonnegative('Tồn kho >= 0'),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
 
-export default function Products(){
+export default function Products(): JSX.Element {
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);  // State mới cho categories
     const [selectedImages, setSelectedImages] = useState<string[]>([]);
     const { uploadImage, uploading, progress } = useUploadImage();
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,6 +52,7 @@ export default function Products(){
 
     useEffect(() => {
         fetchProducts();
+        fetchCategories();  // Fetch categories
     }, []);
 
     const fetchProducts = async (): Promise<void> => {
@@ -57,18 +66,28 @@ export default function Products(){
         }
     };
 
+    const fetchCategories = async (): Promise<void> => {  // Function mới
+        try {
+            const q = query(collection(db, 'categories'));
+            const snap = await getDocs(q);
+            setCategories(snap.docs.map(d => ({ id: d.id, ...d.data() } as Category)));
+        } catch (error) {
+            console.error('Lỗi fetch categories:', error);
+            toast.error('Lỗi tải danh mục!');
+        }
+    };
+
     const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
         const files = Array.from(event.target.files || []);
         if (files.length === 0) return;
 
-        const urls = await uploadImage(files);  // Gọi hook mới, nhận array URLs
+        const urls = await uploadImage(files);
         if (urls) {
             setSelectedImages(prev => [...prev, ...urls]);
             toast.success(`${urls.length} ảnh đã upload thành công!`);
         } else {
             toast.error('Lỗi upload ảnh!');
         }
-        // Reset input
         event.target.value = '';
     };
 
@@ -102,7 +121,7 @@ export default function Products(){
             name: product.name,
             description: product.description,
             price: product.price,
-            categoryId: product.categoryId,
+            categoryId: product.categoryId,  // Pre-select categoryId
             stock: product.stock,
         });
         setSelectedImages(product.imageUrls || []);
@@ -120,12 +139,6 @@ export default function Products(){
             toast.error('Lỗi khi xóa sản phẩm!');
         }
     };
-
-    // Debug log để check components (xóa sau khi fix)
-    useEffect(() => {
-        console.log('Button:', typeof Button);  // Nên là 'function'
-        console.log('Dialog:', typeof Dialog);  // Nên là 'function'
-    }, []);
 
     return (
         <div className="space-y-6 p-4">
@@ -161,9 +174,24 @@ export default function Products(){
                                 {form.formState.errors.price && <p className="text-sm text-red-500">{form.formState.errors.price.message}</p>}
                             </div>
 
+                            {/* Thay Input bằng Select cho categoryId */}
                             <div className="space-y-2">
-                                <Label htmlFor="categoryId">Category ID</Label>
-                                <Input id="categoryId" {...form.register('categoryId')} />
+                                <Label htmlFor="categoryId">Danh Mục</Label>
+                                <Select
+                                    onValueChange={(value) => form.setValue('categoryId', value)}  // Set value cho form
+                                    defaultValue={form.watch('categoryId')}  // Pre-select khi edit
+                                >
+                                    <SelectTrigger id="categoryId">
+                                        <SelectValue placeholder="Chọn danh mục..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {categories.map((cat: Category) => (
+                                            <SelectItem key={cat.id} value={cat.id}>
+                                                {cat.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 {form.formState.errors.categoryId && <p className="text-sm text-red-500">{form.formState.errors.categoryId.message}</p>}
                             </div>
                         </div>
@@ -184,7 +212,7 @@ export default function Products(){
                                 type="file"
                                 multiple
                                 accept="image/*"
-                                onChange={handleFileUpload}  // Cập nhật onChange
+                                onChange={handleFileUpload}
                                 disabled={uploading}
                                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                             />
